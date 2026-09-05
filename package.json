@@ -11,7 +11,7 @@
     "build:web": "bun x --bun vite build",
     "api": "bun server/index.ts",
     "lint": "eslint .",
-    "test:unit": "bun test server/service-alerts.test.ts server/walking-directions.test.ts lib/service-alerts.test.ts lib/notifications.test.ts lib/trip-guidance.test.ts",
+    "test:unit": "bun test server/gtfs-csv.test.ts server/static-site.test.ts server/service-alerts.test.ts server/walking-directions.test.ts lib/service-alerts.test.ts lib/notifications.test.ts lib/trip-guidance.test.ts",
     "test:smoke": "playwright test tests/smoke.spec.ts",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",

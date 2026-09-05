@@ -1,0 +1,21 @@
+# One free service serves both the website and its transit API.
+services:
+  - type: web
+    name: holo-hele-demo
+    runtime: node
+    plan: free
+    region: oregon
+    branch: codex/render-free-deployment
+    buildCommand: bun install --frozen-lockfile && bun run build
+    startCommand: bun --smol server/index.ts
+    healthCheckPath: /health
+    autoDeployTrigger: off
+    envVars:
+      - key: BUN_VERSION
+        value: 1.3.14
+      - key: NODE_ENV
+        value: production
+      - key: STATIC_SITE_DIR
+        value: dist
+      - key: VITE_API_BASE_URL
+        value: ""

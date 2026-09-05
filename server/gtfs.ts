@@ -1,4 +1,5 @@
 import { strFromU8, unzipSync } from "fflate";
+import { rowsToRecords } from "./gtfs-csv";
 
 import type {
   NearbyStopResult,
@@ -61,57 +62,6 @@ interface GtfsIndex {
 
 let gtfsIndexPromise: Promise<GtfsIndex> | null = null;
 
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let quoted = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-
-    if (quoted) {
-      if (character === '"' && text[index + 1] === '"') {
-        field += '"';
-        index += 1;
-      } else if (character === '"') {
-        quoted = false;
-      } else {
-        field += character;
-      }
-      continue;
-    }
-
-    if (character === '"') {
-      quoted = true;
-    } else if (character === ",") {
-      row.push(field);
-      field = "";
-    } else if (character === "\n") {
-      row.push(field.replace(/\r$/, ""));
-      if (row.some(Boolean)) rows.push(row);
-      row = [];
-      field = "";
-    } else {
-      field += character;
-    }
-  }
-
-  if (field || row.length > 0) {
-    row.push(field.replace(/\r$/, ""));
-    if (row.some(Boolean)) rows.push(row);
-  }
-
-  return rows;
-}
-
-function rowsToRecords(text: string): Record<string, string>[] {
-  const [headers = [], ...rows] = parseCsv(text);
-  return rows.map((values) =>
-    Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""])),
-  );
-}
-
 function requireGtfsFile(
   archive: Record<string, Uint8Array>,
   filename: string,
@@ -120,7 +70,9 @@ function requireGtfsFile(
     entry.toLowerCase().endsWith(filename.toLowerCase()),
   );
   if (!key) throw new Error(`GTFS archive is missing ${filename}.`);
-  return strFromU8(archive[key]);
+  const text = strFromU8(archive[key]);
+  delete archive[key];
+  return text;
 }
 
 async function loadGtfsIndex(): Promise<GtfsIndex> {
@@ -169,6 +121,13 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
   }
 
   const tripStopTimes = new Map<string, GtfsStopTime[]>();
+  const times = new Map<string, string>();
+  const internTime = (value: string) => {
+    const existing = times.get(value);
+    if (existing !== undefined) return existing;
+    times.set(value, value);
+    return value;
+  };
 
   for (const record of stopTimeRecords) {
     if (!record.trip_id || !record.stop_id) continue;
@@ -178,8 +137,8 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
     sequence.push({
       stopId: stop.id,
       sequence: Number(record.stop_sequence),
-      arrivalTime: record.arrival_time,
-      departureTime: record.departure_time,
+      arrivalTime: internTime(record.arrival_time),
+      departureTime: internTime(record.departure_time),
     });
     tripStopTimes.set(record.trip_id, sequence);
   }
@@ -206,7 +165,7 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
     routeShortNameById.set(record.route_id, record.route_short_name.trim());
   }
 
-  const trips: GtfsTrip[] = tripRecords.flatMap((record) => {
+  const trips: GtfsTrip[] = Array.from(tripRecords).flatMap((record) => {
     if (!record.trip_id || !record.route_id || !record.service_id) return [];
     return [
       {

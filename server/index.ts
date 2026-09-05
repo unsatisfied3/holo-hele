@@ -21,6 +21,7 @@ import {
 } from "@/server/gtfs";
 import { getServiceAlerts } from "@/server/service-alerts";
 import { getWalkingDirections } from "@/server/walking-directions";
+import { serveStaticSite } from "@/server/static-site";
 import type {
   JourneyCoordinate,
   JourneyOption,
@@ -31,7 +32,8 @@ import type {
 
 const DEFAULT_LAT = 21.3047;
 const DEFAULT_LNG = -157.8567;
-const port = Number(Bun.env.API_PORT ?? 3001);
+const port = Number(Bun.env.PORT ?? Bun.env.API_PORT ?? 3001);
+const staticSiteDirectory = Bun.env.STATIC_SITE_DIR;
 const defaultOrigins = [
   "http://localhost:1420",
   "http://127.0.0.1:1420",
@@ -45,6 +47,9 @@ const allowedOrigins = new Set(
     .map((origin) => origin.trim())
     .filter(Boolean),
 );
+if (Bun.env.RENDER_EXTERNAL_URL) {
+  allowedOrigins.add(new URL(Bun.env.RENDER_EXTERNAL_URL).origin);
+}
 
 function corsHeaders(origin: string | null): HeadersInit {
   const headers: Record<string, string> = {
@@ -777,6 +782,7 @@ async function stopLocation(url: URL, origin: string | null): Promise<Response> 
 
 const server = Bun.serve({
   port,
+  hostname: "0.0.0.0",
   async fetch(request) {
     const origin = request.headers.get("Origin");
     if (origin && !allowedOrigins.has(origin)) {
@@ -787,11 +793,17 @@ const server = Bun.serve({
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
+    const url = new URL(request.url);
+    const isApi = url.pathname === "/api" || url.pathname.startsWith("/api/");
+    if (staticSiteDirectory && !isApi && url.pathname !== "/health" &&
+      (request.method === "GET" || request.method === "HEAD")) {
+      return serveStaticSite(request, staticSiteDirectory);
+    }
+
     if (request.method !== "GET") {
       return json({ error: "Method not allowed." }, 405, origin);
     }
 
-    const url = new URL(request.url);
     if (url.pathname === "/health") {
       return json({ status: "ok" }, 200, origin);
     }

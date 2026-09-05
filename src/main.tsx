@@ -6,6 +6,7 @@ import "@fontsource/inter/latin-400.css";
 import "@fontsource/inter/latin-500.css";
 import "@fontsource/inter/latin-600.css";
 import "@fontsource/inter/latin-700.css";
+import "leaflet/dist/leaflet.css";
 
 import { router } from "@/src/router";
 import "@/src/styles.css";
