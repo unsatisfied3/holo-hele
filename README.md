@@ -53,17 +53,22 @@ domain, or API key is required to try scheduled transit data.
 5. Optional: add `THEBUS_API_KEY` in the service's **Environment** settings to
    enable live arrivals. Keep the key out of GitHub and frontend variables.
 
-The Blueprint pins Bun 1.3.14, builds with `bun run build`, and serves `dist/`
+The Blueprint pins Bun 1.3.14, builds with `bun run build`, then runs
+`bun --smol server/build-gtfs.ts` to prepare the official schedule. It serves `dist/`
 using the existing API server with Bun's lower-memory `--smol` option. The GTFS
 loader processes records incrementally and shares repeated schedule times to
-reduce startup memory without removing stops, trips, or schedules.
+reduce memory without removing stops, trips, or schedules. `GTFS_INDEX_PATH` points
+to `.cache/gtfs-index.bin`, a build-generated binary that avoids parsing the large
+CSV feed on the free web server. The snapshot refreshes on each deployment;
+redeploy to pick up new TheBus schedules. Build and runtime must use the same Bun
+version. Without this variable, local development downloads the feed normally.
 It uses Render's `PORT` and permits same-site
 requests from `RENDER_EXTERNAL_URL`. Leave `VITE_API_BASE_URL` empty. Nested
 browser routes work when opened directly or refreshed; `/api/*` remains API-only.
 Automatic deployment is off; use **Manual Deploy** for subsequent updates.
 
 Free services sleep after 15 minutes without traffic and can take about a minute
-to wake. The app must also load its GTFS transit dataset after restarting.
+to wake. The app loads its prepared GTFS snapshot after restarting.
 Free-tier memory, bandwidth, and build limits still apply; verify the initial
 transit-data load before sharing the demo. Do not upgrade to paid compute without
 the project owner's approval.
@@ -73,13 +78,15 @@ To test the production setup locally in PowerShell:
 ```powershell
 bun install --frozen-lockfile
 bun run build
+$env:GTFS_INDEX_PATH = '.cache/gtfs-index.bin'
+bun --smol server/build-gtfs.ts
 $env:STATIC_SITE_DIR = 'dist'
 $env:API_PORT = '3001'
 bun --smol server/index.ts
 ```
 
 Open `http://localhost:3001`. `/health` checks server availability; `/api/stops`
-also checks that the external transit feed can load. Live arrivals require a
+also checks that the prepared transit dataset can load. Live arrivals require a
 valid key and upstream availability.
 
 ### Separate website and API hosts

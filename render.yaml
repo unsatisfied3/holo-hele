@@ -6,7 +6,7 @@ services:
     plan: free
     region: oregon
     branch: codex/render-free-deployment
-    buildCommand: bun install --frozen-lockfile && bun run build
+    buildCommand: bun install --frozen-lockfile && bun run build && bun --smol server/build-gtfs.ts
     startCommand: bun --smol server/index.ts
     healthCheckPath: /health
     autoDeployTrigger: off
@@ -17,5 +17,7 @@ services:
         value: production
       - key: STATIC_SITE_DIR
         value: dist
+      - key: GTFS_INDEX_PATH
+        value: .cache/gtfs-index.bin
       - key: VITE_API_BASE_URL
         value: ""

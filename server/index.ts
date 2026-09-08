@@ -783,6 +783,8 @@ async function stopLocation(url: URL, origin: string | null): Promise<Response> 
 const server = Bun.serve({
   port,
   hostname: "0.0.0.0",
+  // Allow the first request to finish loading the prepared schedule on a small CPU.
+  idleTimeout: 120,
   async fetch(request) {
     const origin = request.headers.get("Origin");
     if (origin && !allowedOrigins.has(origin)) {

@@ -1,4 +1,5 @@
 import { strFromU8, unzipSync } from "fflate";
+import { deserialize, serialize } from "bun:jsc";
 import { rowsToRecordsAsync } from "./gtfs-csv";
 
 import type {
@@ -61,6 +62,22 @@ interface GtfsIndex {
 }
 
 let gtfsIndexPromise: Promise<GtfsIndex> | null = null;
+
+export async function buildGtfsSnapshot(path: string): Promise<void> {
+  const index = await loadGtfsIndex();
+  await Bun.write(path, serialize(index, { binaryType: "nodebuffer" }));
+  console.log(`Prepared official schedule snapshot: ${index.stops.length} stops.`);
+}
+
+async function loadPreparedGtfsIndex(): Promise<GtfsIndex> {
+  const path = Bun.env.GTFS_INDEX_PATH;
+  if (!path) return loadGtfsIndex();
+  // This binary is generated from the official feed during the same Bun build.
+  // It preserves Maps, Sets and shared references without CSV work at startup.
+  const index = deserialize(await Bun.file(path).arrayBuffer()) as GtfsIndex;
+  console.log(`Loaded prepared schedule: ${index.stops.length} stops.`);
+  return index;
+}
 
 function requireGtfsFile(
   archive: Uint8Array,
@@ -420,7 +437,7 @@ interface GtfsStopServiceSummary {
 }
 
 async function getGtfsIndex(): Promise<GtfsIndex> {
-  gtfsIndexPromise ??= loadGtfsIndex().catch((error) => {
+  gtfsIndexPromise ??= loadPreparedGtfsIndex().catch((error) => {
     gtfsIndexPromise = null;
     throw error;
   });

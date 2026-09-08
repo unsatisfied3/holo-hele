@@ -19,6 +19,7 @@
 /.next/
 /build
 /dist
+/.cache
 /src-tauri/target
 
 # misc
