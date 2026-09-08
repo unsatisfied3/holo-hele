@@ -1,5 +1,5 @@
 import { strFromU8, unzipSync } from "fflate";
-import { rowsToRecords } from "./gtfs-csv";
+import { rowsToRecordsAsync } from "./gtfs-csv";
 
 import type {
   NearbyStopResult,
@@ -63,16 +63,17 @@ interface GtfsIndex {
 let gtfsIndexPromise: Promise<GtfsIndex> | null = null;
 
 function requireGtfsFile(
-  archive: Record<string, Uint8Array>,
+  archive: Uint8Array,
   filename: string,
 ): string {
-  const key = Object.keys(archive).find((entry) =>
-    entry.toLowerCase().endsWith(filename.toLowerCase()),
-  );
+  // Expand one file at a time so the full uncompressed archive is never held
+  // alongside the parsed index on a small hosting instance.
+  const files = unzipSync(archive, {
+    filter: (entry) => entry.name.toLowerCase().endsWith(filename.toLowerCase()),
+  });
+  const key = Object.keys(files)[0];
   if (!key) throw new Error(`GTFS archive is missing ${filename}.`);
-  const text = strFromU8(archive[key]);
-  delete archive[key];
-  return text;
+  return strFromU8(files[key]);
 }
 
 async function loadGtfsIndex(): Promise<GtfsIndex> {
@@ -84,22 +85,11 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
     throw new Error(`TheBus GTFS feed returned ${response.status}.`);
   }
 
-  const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
-  const stopRecords = rowsToRecords(requireGtfsFile(archive, "stops.txt"));
-  const stopTimeRecords = rowsToRecords(
-    requireGtfsFile(archive, "stop_times.txt"),
-  );
-  const routeRecords = rowsToRecords(requireGtfsFile(archive, "routes.txt"));
-  const tripRecords = rowsToRecords(requireGtfsFile(archive, "trips.txt"));
-  const shapeRecords = rowsToRecords(requireGtfsFile(archive, "shapes.txt"));
-  const calendarRecords = rowsToRecords(requireGtfsFile(archive, "calendar.txt"));
-  const calendarDateRecords = rowsToRecords(
-    requireGtfsFile(archive, "calendar_dates.txt"),
-  );
+  const archive = new Uint8Array(await response.arrayBuffer());
   const stopsById = new Map<string, GtfsStop>();
   const stops: GtfsStop[] = [];
 
-  for (const record of stopRecords) {
+  for await (const record of rowsToRecordsAsync(await requireGtfsFile(archive, "stops.txt"))) {
     const lat = Number.parseFloat(record.stop_lat);
     const lng = Number.parseFloat(record.stop_lon);
     if (!record.stop_id || !record.stop_name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -129,7 +119,7 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
     return value;
   };
 
-  for (const record of stopTimeRecords) {
+  for await (const record of rowsToRecordsAsync(await requireGtfsFile(archive, "stop_times.txt"))) {
     if (!record.trip_id || !record.stop_id) continue;
     const stop = stopsById.get(record.stop_id);
     if (!stop) continue;
@@ -156,7 +146,7 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
 
   const routeIdsByShortName = new Map<string, string[]>();
   const routeShortNameById = new Map<string, string>();
-  for (const record of routeRecords) {
+  for await (const record of rowsToRecordsAsync(await requireGtfsFile(archive, "routes.txt"))) {
     if (!record.route_id || !record.route_short_name) continue;
     const key = record.route_short_name.trim().toLocaleUpperCase();
     const routeIds = routeIdsByShortName.get(key) ?? [];
@@ -165,18 +155,17 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
     routeShortNameById.set(record.route_id, record.route_short_name.trim());
   }
 
-  const trips: GtfsTrip[] = Array.from(tripRecords).flatMap((record) => {
-    if (!record.trip_id || !record.route_id || !record.service_id) return [];
-    return [
-      {
+  const trips: GtfsTrip[] = [];
+  for await (const record of rowsToRecordsAsync(await requireGtfsFile(archive, "trips.txt"))) {
+    if (!record.trip_id || !record.route_id || !record.service_id) continue;
+    trips.push({
         tripId: record.trip_id,
         routeId: record.route_id,
         serviceId: record.service_id,
         shapeId: record.shape_id,
         headsign: record.trip_headsign,
-      },
-    ];
-  });
+    });
+  }
   const routeNamesByStopId = new Map<string, Set<string>>();
 
   for (const trip of trips) {
@@ -196,7 +185,7 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
     string,
     Array<{ position: [number, number]; sequence: number }>
   >();
-  for (const record of shapeRecords) {
+  for await (const record of rowsToRecordsAsync(await requireGtfsFile(archive, "shapes.txt"))) {
     const lat = Number.parseFloat(record.shape_pt_lat);
     const lng = Number.parseFloat(record.shape_pt_lon);
     if (!record.shape_id || !Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -220,7 +209,7 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
   );
 
   const calendarsByServiceId = new Map<string, GtfsCalendar>();
-  for (const record of calendarRecords) {
+  for await (const record of rowsToRecordsAsync(await requireGtfsFile(archive, "calendar.txt"))) {
     if (!record.service_id) continue;
     calendarsByServiceId.set(record.service_id, {
       startDate: record.start_date,
@@ -238,7 +227,7 @@ async function loadGtfsIndex(): Promise<GtfsIndex> {
   }
 
   const exceptionsByServiceId = new Map<string, Map<string, number>>();
-  for (const record of calendarDateRecords) {
+  for await (const record of rowsToRecordsAsync(await requireGtfsFile(archive, "calendar_dates.txt"))) {
     if (!record.service_id || !record.date) continue;
     const exceptions = exceptionsByServiceId.get(record.service_id) ?? new Map();
     exceptions.set(record.date, Number(record.exception_type));

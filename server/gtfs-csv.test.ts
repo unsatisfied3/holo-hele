@@ -1,7 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { rowsToRecords } from "./gtfs-csv";
+import { rowsToRecords, rowsToRecordsAsync } from "./gtfs-csv";
 
 describe("GTFS CSV records", () => {
+  test("allows timers to run before a large import finishes without dropping records", async () => {
+    let timerRan = false;
+    const timer = setTimeout(() => { timerRan = true; }, 0);
+    const text = "id,name\n" + Array.from({ length: 25001 }, (_, id) => `${id},Stop ${id}`).join("\n");
+    let count = 0;
+    let yieldedBeforeCompletion = false;
+    for await (const record of rowsToRecordsAsync(text)) {
+      expect(record.id).toBe(String(count));
+      count++;
+      if (timerRan && count < 25001) yieldedBeforeCompletion = true;
+    }
+    clearTimeout(timer);
+    expect(count).toBe(25001);
+    expect(yieldedBeforeCompletion).toBe(true);
+  });
   test("preserves quoted commas, escaped quotes, and embedded newlines", () => {
     const records = Array.from(rowsToRecords('id,name\r\n1,"Stop, downtown"\r\n2,"The ""Bus"""\r\n3,"Two\nlines"'));
     expect(records).toEqual([

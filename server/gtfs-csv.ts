@@ -55,3 +55,12 @@ export function* rowsToRecords(text: string): Generator<Record<string, string>> 
     if (++count % 25000 === 0) Bun.gc(true);
   }
 }
+
+/** Give HTTP requests and health checks time to run during large feed imports. */
+export async function* rowsToRecordsAsync(text: string): AsyncGenerator<Record<string, string>> {
+  let count = 0;
+  for (const record of rowsToRecords(text)) {
+    yield record;
+    if (++count % 1000 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
