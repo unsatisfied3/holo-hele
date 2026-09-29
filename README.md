@@ -25,8 +25,8 @@ A configured server-side key enables requests to TheBus. Live behavior depends o
 Install Node.js and npm compatible with the Next.js version in [package.json](package.json), then run:
 
 ```sh
-git clone https://github.com/unsatisfied3/Holo-Hele.git
-cd Holo-Hele
+git clone https://github.com/unsatisfied3/holo-hele.git
+cd holo-hele
 npm ci
 npm run dev
 ```
